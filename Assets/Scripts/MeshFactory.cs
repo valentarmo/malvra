@@ -1,6 +1,7 @@
 ﻿using Microsoft.MixedReality.Toolkit.UI;
-using System.Collections;
+using Microsoft.MixedReality.Toolkit.Utilities;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 
 namespace malvra
@@ -19,44 +20,92 @@ namespace malvra
         /* Radius references: 
          * http://hydra.nat.uni-magdeburg.de/packing/csq/csq.html#overview
          */
-        private const float pomponRadius = 0.055680181768f;
-        private const float clavelRadius = 0.087858157088f;
         private Vector3 lastPinAPos;
         private Vector3 lastPinBPos;
-        private float currentPlantRadius = pomponRadius;
+        private float currentPlantRadius;
 
         public GameObject wallPrefab; // Used to represent the mesh's perimeter.
         public GameObject spotPrefab; // Used to represent the planting spots.
-        public GameObject pinPrefab; // Used mainly to reset the scene
+        public GameObject pinPrefab; 
+        public GameObject flowerButtonPrefab;
+        public GameObject commandPanel;
 
-        void Start()
+        async void Start()
         {
+            List<Flower> flowers = await Flowers.GetFlowers();
+            CreateFlowerButtons(flowers);
             this.pinA = GameObject.Find("/SceneContent/Pins/PinA");
             this.pinB = GameObject.Find("/SceneContent/Pins/PinB");
             lastPinAPos = this.pinA.transform.position;
             lastPinBPos = this.pinB.transform.position;
         }
 
-        public void BuildPomponMesh()
+        private void CreateFlowerButtons(List<Flower> flowers)
         {
-            if (ThereIsAMesh() && currentPlantRadius != pomponRadius)
+            GridObjectCollection buttonCollection = commandPanel.GetComponentInChildren<GridObjectCollection>();
+            ScrollingObjectCollection buttonCollectionScroll = commandPanel.GetComponentInChildren<ScrollingObjectCollection>();
+            float n = 0.0f;
+            foreach(Flower flower in flowers)
             {
-                Reset();
+                GameObject button = GameObject.Instantiate<GameObject>(flowerButtonPrefab, buttonCollection.transform.position, Quaternion.identity);
+                button.transform.parent = buttonCollection.transform;
+                FlowerProperties buttonFlowerProperties = button.GetComponentInChildren<FlowerProperties>();
+                buttonFlowerProperties.Name = flower.Name;
+                buttonFlowerProperties.PlantingRadius = flower.PlantingRadius;
+                TextMeshPro[] buttonText = button.GetComponentsInChildren<TextMeshPro>();
+                foreach(TextMeshPro text in buttonText)
+                    text.text = flower.Name;
+                Interactable buttonInteractable = button.GetComponentInChildren<Interactable>();
+                buttonInteractable.OnClick.AddListener(() => SelectRadius(button));
+                n += 0.05f;
             }
-
-            currentPlantRadius = pomponRadius;
-            BuildMesh();
+            buttonCollection.UpdateCollection();
+            buttonCollectionScroll.UpdateContent();
+            buttonCollectionScroll.gameObject.SetActive(false);
         }
 
-        public void BuildClavelMesh()
+        public void SelectRadius(GameObject button)
         {
-            if (ThereIsAMesh() && currentPlantRadius != clavelRadius)
-            {
-                Reset();
-            }
+            FlowerProperties buttonFlowerProperties = button.GetComponentInChildren<FlowerProperties>();
+            this.currentPlantRadius = buttonFlowerProperties.PlantingRadius;
+            ScrollingObjectCollection buttonCollectionScroll = commandPanel.GetComponentInChildren<ScrollingObjectCollection>();
+            buttonCollectionScroll.gameObject.SetActive(false);
+        }
 
-            currentPlantRadius = clavelRadius;
-            BuildMesh();
+        public void TogglePlantsMenu()
+        {
+            ScrollingObjectCollection buttonCollectionScroll = commandPanel.GetComponentInChildren(typeof(ScrollingObjectCollection), true) as ScrollingObjectCollection;
+            buttonCollectionScroll.gameObject.SetActive(!buttonCollectionScroll.gameObject.activeSelf);
+        }
+
+        public void BuildMesh()
+        {
+            if (this.currentPlantRadius == 0.0f) return;
+            if (ThereIsAMesh()) Reset();
+
+            Vector3 pinApos = this.pinA.transform.position;
+            Vector3 pinBpos = this.pinB.transform.position;
+
+            PutPinsAtTheSameHeight(ref pinApos, ref pinBpos);
+
+            Vector3[] cornerPositions = DefineCorners(pinApos, pinBpos);
+
+            Vector3 topLeftCornerPosition = cornerPositions[0];
+            Vector3 topRightCornerPosition = cornerPositions[1];
+            Vector3 bottomLeftCornerPosition = cornerPositions[2];
+            Vector3 bottomRightCornerPosition = cornerPositions[3];
+
+            GameObject topLeftCorner = Instantiate<GameObject>(wallPrefab, topLeftCornerPosition, Quaternion.identity);
+            GameObject TopRightCorner = Instantiate<GameObject>(wallPrefab, topRightCornerPosition, Quaternion.identity);
+            GameObject BottomLeftCorner = Instantiate<GameObject>(wallPrefab, bottomLeftCornerPosition, Quaternion.identity);
+            GameObject BottomRightCorner = Instantiate<GameObject>(wallPrefab, bottomRightCornerPosition, Quaternion.identity);
+
+            AssembleMeshFromCorners(topLeftCorner, TopRightCorner, BottomLeftCorner, BottomRightCorner);
+
+            ConfigureMeshBoundingBox();
+            ConfigureMeshManipulationHandler();
+
+            CleanUp(pinApos, pinBpos);
         }
 
         public void Reset()
@@ -89,35 +138,6 @@ namespace malvra
         {
             this.pinA.transform.position = lastPinAPos;
             this.pinB.transform.position = lastPinBPos;
-        }
-
-        private void BuildMesh()
-        {
-            if (ThereIsAMesh()) return;
-
-            Vector3 pinApos = this.pinA.transform.position;
-            Vector3 pinBpos = this.pinB.transform.position;
-
-            PutPinsAtTheSameHeight(ref pinApos, ref pinBpos);
-
-            Vector3[] cornerPositions = DefineCorners(pinApos, pinBpos);
-
-            Vector3 topLeftCornerPosition = cornerPositions[0];
-            Vector3 topRightCornerPosition = cornerPositions[1];
-            Vector3 bottomLeftCornerPosition = cornerPositions[2];
-            Vector3 bottomRightCornerPosition = cornerPositions[3];
-
-            GameObject topLeftCorner = Instantiate<GameObject>(wallPrefab, topLeftCornerPosition, Quaternion.identity);
-            GameObject TopRightCorner = Instantiate<GameObject>(wallPrefab, topRightCornerPosition, Quaternion.identity);
-            GameObject BottomLeftCorner = Instantiate<GameObject>(wallPrefab, bottomLeftCornerPosition, Quaternion.identity);
-            GameObject BottomRightCorner = Instantiate<GameObject>(wallPrefab, bottomRightCornerPosition, Quaternion.identity);
-
-            AssembleMeshFromCorners(topLeftCorner, TopRightCorner, BottomLeftCorner, BottomRightCorner);
-
-            ConfigureMeshBoundingBox();
-            ConfigureMeshManipulationHandler();
-
-            CleanUp(pinApos, pinBpos);
         }
 
         private void CleanUp(Vector3 pinApos, Vector3 pinBpos)
